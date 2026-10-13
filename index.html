@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Misi Tembak Interaktif Lingkaran - Beni Adam, S.Pd. (SMAN 2 Rangkasbitung)</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome CDN -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts: Poppins -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Poppins"', 'sans-serif'] },
+                    colors: {
+                        brand: { 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #090d16; color: #fff; overflow: hidden; user-select: none; }
+        .glass { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); }
+        .modal-overlay { background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(16px); }
+        /* Mirror webcam stream */
+        .mirror { transform: scaleX(-1); }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between font-sans relative">
+
+    <!-- Hidden Video Element for MediaPipe -->
+    <video class="input_video hidden" playsinline></video>
+
+    <!-- MODAL PANDUAN GESTUR -->
+    <div id="guideModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4">
+        <div class="glass max-w-xl w-full rounded-3xl p-8 text-center shadow-2xl border border-sky-500/30">
+            <div class="w-20 h-20 bg-sky-500/20 text-sky-400 rounded-full flex items-center justify-center mx-auto mb-5 text-3xl border border-sky-400/30 shadow-[0_0_20px_rgba(14,165,233,0.3)]">
+                <i class="fas fa-hand-pointer"></i>
+            </div>
+            <h2 class="text-2xl md:text-3xl font-extrabold mb-3 text-white">Panduan Kontrol Gestur</h2>
+            <div class="text-left text-slate-300 text-sm space-y-3 mb-6 bg-black/40 p-5 rounded-2xl border border-white/10">
+                <p class="flex items-start gap-3">
+                    <span class="bg-sky-500 text-white font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0">1</span>
+                    <span><b>Membidik:</b> Angkat tangan dan luruskan <b>Jari Telunjuk</b> menghadap ke layar untuk menggerakkan target bidik (Crosshair).</span>
+                </p>
+                <p class="flex items-start gap-3">
+                    <span class="bg-sky-500 text-white font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0">2</span>
+                    <span><b>Status Siap (Ready):</b> Biarkan ibu jari tegak/rileks ke atas. Indikator di layar akan berubah menjadi <b class="text-emerald-400">HIJAU</b>.</span>
+                </p>
+                <p class="flex items-start gap-3">
+                    <span class="bg-sky-500 text-white font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0">3</span>
+                    <span><b>Menembak (DOR!):</b> Cukup <b>tekuk/turunkan ibu jari</b> ke bawah untuk menembakkan peluru ke jawaban yang tepat!</span>
+                </p>
+            </div>
+            <button onclick="startGame()" class="w-full bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-lg py-4 rounded-2xl shadow-[0_0_25px_rgba(14,165,233,0.5)] transition transform active:scale-95">
+                Mulai Permainan <i class="fas fa-play ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN GAME CONTAINER (CANVAS & OVERLAYS) -->
+    <div class="absolute inset-0 z-0">
+        <canvas id="gameCanvas" class="w-full h-full block mirror"></canvas>
+    </div>
+
+    <!-- HUD / HEADER ATAS -->
+    <header class="glass mx-6 mt-6 p-4 rounded-2xl flex justify-between items-center z-10 shadow-lg">
+        <div class="flex items-center gap-3">
+            <div class="bg-sky-500/20 text-sky-400 p-3 rounded-xl border border-sky-400/30">
+                <i class="fas fa-circle-notch text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-base md:text-lg text-white leading-tight">Materi Lingkaran (Kelas XI)</h1>
+                <p class="text-xs text-sky-300">Beni Adam, S.Pd. • SMAN 2 Rangkasbitung</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <!-- Waktu -->
+            <div class="text-center">
+                <span class="block text-[10px] text-slate-400 uppercase font-semibold">Waktu</span>
+                <span id="timerDisplay" class="text-xl font-extrabold text-sky-400">60s</span>
+            </div>
+            <!-- Skor -->
+            <div class="text-center">
+                <span class="block text-[10px] text-slate-400 uppercase font-semibold">Skor</span>
+                <span id="scoreDisplay" class="text-xl font-extrabold text-emerald-400">0</span>
+            </div>
+            <!-- Nyawa -->
+            <div class="text-center">
+                <span class="block text-[10px] text-slate-400 uppercase font-semibold">Nyawa</span>
+                <div id="livesDisplay" class="flex gap-1 text-rose-500 text-lg">
+                    <i class="fas fa-heart"></i><i class="fas fa-heart"></i><i class="fas fa-heart"></i><i class="fas fa-heart"></i><i class="fas fa-heart"></i>
+                </div>
+            </div>
+            <!-- Indikator Gestur -->
+            <div id="gestureStatus" class="px-3 py-1.5 rounded-xl font-bold text-xs bg-rose-500/20 border border-rose-500/40 text-rose-300">
+                MENCARI TANGAN...
+            </div>
+        </div>
+    </header>
+
+    <!-- AREA PERTANYAAN TENGAH ATAS -->
+    <div class="max-w-3xl mx-auto px-6 mt-4 z-10 text-center pointer-events-none">
+        <div id="questionContainer" class="glass p-5 rounded-2xl shadow-xl border border-white/10">
+            <span id="questionCounter" class="text-xs font-bold text-sky-400 uppercase tracking-widest block mb-1">Soal 1 dari 10</span>
+            <h2 id="questionText" class="text-base md:text-xl font-bold text-white">Memuat pertanyaan...</h2>
+        </div>
+    </div>
+
+    <!-- FOOTER / INFO STATUS -->
+    <footer class="glass mx-6 mb-6 p-3 rounded-xl flex justify-between items-center z-10 text-xs text-slate-400">
+        <span>Arahkan Telunjuk & Turunkan Ibu Jari untuk Menembak</span>
+        <span class="text-sky-400 font-semibold">Papan Interaktif Digital Mode</span>
+    </footer>
+
+    <!-- GAME OVER MODAL -->
+    <div id="gameOverModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass max-w-md w-full rounded-3xl p-8 text-center shadow-2xl border border-sky-500/30">
+            <div class="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-5 text-3xl border border-emerald-400/30">
+                <i class="fas fa-trophy"></i>
+            </div>
+            <h2 class="text-2xl font-extrabold mb-1 text-white">Permainan Selesai!</h2>
+            <p class="text-slate-400 text-sm mb-4">Kerja bagus telah menyelesaikan kuis lingkaran.</p>
+            <div class="bg-black/40 p-4 rounded-2xl mb-6 border border-white/10">
+                <span class="text-xs text-slate-400 uppercase block">Skor Akhir Anda</span>
+                <span id="finalScore" class="text-4xl font-extrabold text-emerald-400">0</span>
+            </div>
+            <button onclick="restartGame()" class="w-full bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-lg py-4 rounded-2xl shadow-[0_0_25px_rgba(14,165,233,0.5)] transition">
+                Main Lagi <i class="fas fa-rotate-right ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- SCRIPT UTAMA GAME & MEDIAPIPE -->
+    <script>
+        // --- DATABASE 10 SOAL PILIHAN GANDA LINGKARAN KELAS XI ---
+        const quizData = [
+            {
+                q: "Unsur lingkaran yang berupa garis lurus yang menghubungkan dua titik pada keliling lingkaran dan melalui titik pusat disebut...",
+                options: ["Jari-jari", "Diameter", "Tali Busur", "Apotema"],
+                answer: 1
+            },
+            {
+                q: "Daerah di dalam lingkaran yang dibatasi oleh dua buah jari-jari dan sebuah busur disebut...",
+                options: ["Juring", "Tembereng", "Apotema", "Tali Busur"],
+                answer: 0
+            },
+            {
+                q: "Jika sebuah sudut pusat besarnya 80°, maka besar sudut keliling yang menghadap busur yang sama adalah...",
+                options: ["160°", "80°", "40°", "20°"],
+                answer: 2
+            },
+            {
+                q: "Garis tegak lurus yang ditarik dari titik pusat lingkaran ke suatu tali busur disebut...",
+                options: ["Diameter", "Jari-jari", "Apotema", "Busur"],
+                answer: 2
+            },
+            {
+                q: "Besar sudut keliling yang menghadap diameter lingkaran adalah...",
+                options: ["45°", "90°", "180°", "360°"],
+                answer: 1
+            },
+            {
+                q: "Jika dua buah sudut keliling menghadap pada busur yang sama, maka hubungan kedua sudut tersebut adalah...",
+                options: ["Saling berpenyiku", "Saling berpelurus", "Besarnya sama", "Besarnya berbeda"],
+                answer: 2
+            },
+            {
+                q: "Daerah pada lingkaran yang dibatasi oleh sebuah busur dan tali busurnya disebut...",
+                options: ["Juring", "Tembereng", "Jari-jari", "Sektor"],
+                answer: 1
+            },
+            {
+                q: "Persamaan lingkaran dengan pusat (0,0) dan jari-jari r adalah...",
+                options: ["x² + y² = r", "x + y = r²", "x² + y² = r²", "(x-a)² + (y-b)² = r²"],
+                answer: 2
+            },
+            {
+                q: "Pusat lingkaran dari persamaan (x - 2)² + (y + 3)² = 25 adalah...",
+                options: ["(2, -3)", "(-2, 3)", "(2, 3)", "(-2, -3)"],
+                answer: 0
+            },
+            {
+                q: "Jari-jari lingkaran dari persamaan x² + y² = 49 adalah...",
+                options: ["7", "14", "49", "24.5"],
+                answer: 0
+            }
+        ];
+
+        // --- AUDIO SYNTHESIZER (WEB AUDIO API) ---
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'shoot') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'correct') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.setValueAtTime(500, now + 0.1);
+                osc.frequency.setValueAtTime(700, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            } else if (type === 'wrong') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.setValueAtTime(100, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        // --- GAME STATE VARIABLES ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let videoElement = document.querySelector('.input_video');
+
+        let gameState = 'GUIDE';
+        let currentQuestionIdx = 0;
+        let score = 0;
+        let lives = 5;
+        let timeLeft = 60;
+        let timerInterval = null;
+
+        // Pointer & Gesture tracking
+        let cursorX = window.innerWidth / 2;
+        let cursorY = window.innerHeight / 2;
+        let targetX = cursorX;
+        let targetY = cursorY;
+        let isReadyToShoot = false;
+        let canShoot = true;
+
+        let targets = [];
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function loadQuestion() {
+            if (currentQuestionIdx >= quizData.length) {
+                endGame();
+                return;
+            }
+            const qData = quizData[currentQuestionIdx];
+            document.getElementById('questionCounter').innerText = `Soal ${currentQuestionIdx + 1} dari ${quizData.length}`;
+            document.getElementById('questionText').innerText = qData.q;
+
+            targets = [];
+            const spacing = canvas.width / 5;
+            qData.options.forEach((opt, idx) => {
+                targets.push({
+                    id: idx,
+                    text: opt,
+                    isCorrect: (idx === qData.answer),
+                    x: spacing * (idx + 0.5),
+                    y: canvas.height * 0.65,
+                    radius: 70,
+                    vx: (Math.random() - 0.5) * 1.5,
+                    vy: (Math.random() - 0.5) * 1.5
+                });
+            });
+
+            timeLeft = 60;
+            document.getElementById('timerDisplay').innerText = timeLeft + 's';
+        }
+
+        function startGame() {
+            document.getElementById('guideModal').classList.add('hidden');
+            gameState = 'PLAYING';
+            currentQuestionIdx = 0;
+            score = 0;
+            lives = 5;
+            updateHUD();
+            loadQuestion();
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (gameState === 'PLAYING') {
+                    timeLeft--;
+                    document.getElementById('timerDisplay').innerText = timeLeft + 's';
+                    if (timeLeft <= 0) {
+                        handleWrongAnswer("Waktu Habis!");
+                    }
+                }
+            }, 1000);
+        }
+
+        function updateHUD() {
+            document.getElementById('scoreDisplay').innerText = score;
+            let heartsHTML = '';
+            for (let i = 0; i < 5; i++) {
+                heartsHTML += `<i class="fas fa-heart ${i < lives ? 'text-rose-500' : 'text-slate-600'}"></i>`;
+            }
+            document.getElementById('livesDisplay').innerHTML = heartsHTML;
+        }
+
+        function handleCorrectAnswer() {
+            playSound('correct');
+            score += 20;
+            updateHUD();
+            createExplosion(cursorX, cursorY, '#10b981');
+            currentQuestionIdx++;
+            loadQuestion();
+        }
+
+        function handleWrongAnswer(reason) {
+            playSound('wrong');
+            lives--;
+            updateHUD();
+            createExplosion(cursorX, cursorY, '#ef4444');
+            if (lives <= 0) {
+                endGame();
+            } else {
+                currentQuestionIdx++;
+                loadQuestion();
+            }
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            clearInterval(timerInterval);
+            document.getElementById('finalScore').innerText = score;
+            document.getElementById('gameOverModal').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            document.getElementById('gameOverModal').classList.add('hidden');
+            startGame();
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 30; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 12,
+                    vy: (Math.random() - 0.5) * 12,
+                    radius: Math.random() * 6 + 2,
+                    color: color,
